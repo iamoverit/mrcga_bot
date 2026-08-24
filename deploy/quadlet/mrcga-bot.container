@@ -1,0 +1,24 @@
+[Unit]
+Description=MRCGA Telegram bot
+StartLimitIntervalSec=0
+
+[Container]
+Image=localhost/mrcga-bot:latest
+ContainerName=mrcga-bot
+Pull=never
+EnvironmentFile=mrcga-bot.env
+Environment=BOT_STATE_FILE=/data/split-bot.pickle
+Volume=mrcga-bot-data.volume:/data
+ReadOnly=true
+NoNewPrivileges=true
+DropCapability=all
+Network=host
+
+[Service]
+Restart=always
+RestartSec=10s
+TimeoutStopSec=30s
+
+[Install]
+WantedBy=default.target
+

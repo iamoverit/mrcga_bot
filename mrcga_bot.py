@@ -15,11 +15,12 @@ import io
 import os
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
-from typing import Any
+from typing import Any, TypedDict
 
 from telegram import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
+    Message,
     Update,
 )
 from telegram.error import BadRequest
@@ -141,6 +142,7 @@ def format_percent(
 def active_receipt(
     context: ContextTypes.DEFAULT_TYPE,
 ) -> dict | None:
+    assert context.chat_data is not None
     return context.chat_data.get("receipt")
 
 
@@ -154,6 +156,7 @@ def clear_percentage_pending(
     context: ContextTypes.DEFAULT_TYPE,
     user_id: int,
 ) -> None:
+    assert context.chat_data is not None
     pending = context.chat_data.get("awaiting_percentage")
 
     if pending:
@@ -181,6 +184,8 @@ def remember_user(
     """
     if user is None or user.is_bot:
         return
+
+    assert context.chat_data is not None
 
     known_users = context.chat_data.setdefault(
         "known_users",
@@ -1110,12 +1115,15 @@ async def help_command(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ) -> None:
+    message = update.message
+    assert message is not None
+
     remember_user(
         context,
         update.effective_user,
     )
 
-    await update.message.reply_text(
+    await message.reply_text(
         "🧾 Бот для разделения совместных покупок.\n\n"
         "1. Загрузите CSV.\n"
         "2. Каждый участник открывает своё меню.\n"
@@ -1138,6 +1146,10 @@ async def items_command(
     context: ContextTypes.DEFAULT_TYPE,
 ) -> None:
     user = update.effective_user
+    message = update.message
+
+    assert user is not None
+    assert message is not None
 
     remember_user(
         context,
@@ -1147,7 +1159,7 @@ async def items_command(
     receipt = active_receipt(context)
 
     if not receipt:
-        await update.message.reply_text("Сейчас нет активного чека.")
+        await message.reply_text("Сейчас нет активного чека.")
         return
 
     add_telegram_participant(
@@ -1160,7 +1172,7 @@ async def items_command(
         user.id,
     )
 
-    await update.message.reply_text(
+    await message.reply_text(
         receipt_text(
             receipt,
             0,
@@ -1179,16 +1191,20 @@ async def finish_command(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ) -> None:
+    user = update.effective_user
+    message = update.message
+
+    assert user is not None
+    assert message is not None
+
     receipt = active_receipt(context)
 
     if not receipt:
-        await update.message.reply_text("Сейчас нет активного чека.")
+        await message.reply_text("Сейчас нет активного чека.")
         return
 
-    if update.effective_user.id != receipt["owner_id"]:
-        await update.message.reply_text(
-            "Завершить расчёт может только загрузивший чек."
-        )
+    if user.id != receipt["owner_id"]:
+        await message.reply_text("Завершить расчёт может только загрузивший чек.")
         return
 
     await send_final_result(
@@ -1202,21 +1218,27 @@ async def cancel_command(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ) -> None:
+    user = update.effective_user
+    message = update.message
+
+    assert user is not None
+    assert message is not None
+
     receipt = active_receipt(context)
 
     if not receipt:
-        await update.message.reply_text("Сейчас нет активного чека.")
+        await message.reply_text("Сейчас нет активного чека.")
         return
 
-    if update.effective_user.id != receipt["owner_id"]:
-        await update.message.reply_text(
+    if user.id != receipt["owner_id"]:
+        await message.reply_text(
             "Отменить чек может только загрузивший его пользователь."
         )
         return
 
     clear_receipt_state(context)
 
-    await update.message.reply_text("🗑 Чек отменён.")
+    await message.reply_text("🗑 Чек отменён.")
 
 
 # ---------------------------------------------------------------------------
@@ -1229,19 +1251,24 @@ async def upload_csv(
     context: ContextTypes.DEFAULT_TYPE,
 ) -> None:
     user = update.effective_user
+    message = update.message
+
+    assert user is not None
+    assert message is not None
+    assert context.chat_data is not None
 
     remember_user(
         context,
         user,
     )
 
-    message = update.message
-
     if active_receipt(context):
         await message.reply_text("В этой группе уже есть незавершённый чек.")
         return
 
     document = message.document
+    assert document is not None
+    assert document.file_name is not None
 
     if not document.file_name.lower().endswith(".csv"):
         return
@@ -1298,6 +1325,10 @@ async def callback_open(
     context: ContextTypes.DEFAULT_TYPE,
 ) -> None:
     query = update.callback_query
+    assert query is not None
+    assert isinstance(query.data, str)
+    assert isinstance(query.message, Message)
+
     user = query.from_user
 
     remember_user(
@@ -1346,6 +1377,11 @@ async def callback_shared_participants(
     context: ContextTypes.DEFAULT_TYPE,
 ) -> None:
     query = update.callback_query
+    assert query is not None
+    assert isinstance(query.data, str)
+    assert isinstance(query.message, Message)
+    assert context.chat_data is not None
+
     user = query.from_user
 
     remember_user(
@@ -1384,6 +1420,9 @@ async def callback_shared_finish(
     context: ContextTypes.DEFAULT_TYPE,
 ) -> None:
     query = update.callback_query
+    assert query is not None
+    assert isinstance(query.data, str)
+    assert isinstance(query.message, Message)
 
     receipt = active_receipt(context)
 
@@ -1415,6 +1454,9 @@ async def callback_shared_cancel(
     context: ContextTypes.DEFAULT_TYPE,
 ) -> None:
     query = update.callback_query
+    assert query is not None
+    assert isinstance(query.data, str)
+    assert isinstance(query.message, Message)
 
     receipt = active_receipt(context)
 
@@ -1449,6 +1491,10 @@ async def callback_item(
     context: ContextTypes.DEFAULT_TYPE,
 ) -> None:
     query = update.callback_query
+    assert query is not None
+    assert isinstance(query.data, str)
+    assert isinstance(query.message, Message)
+
     user = query.from_user
 
     remember_user(
@@ -1530,6 +1576,9 @@ async def callback_page(
     context: ContextTypes.DEFAULT_TYPE,
 ) -> None:
     query = update.callback_query
+    assert query is not None
+    assert isinstance(query.data, str)
+    assert isinstance(query.message, Message)
 
     (
         _,
@@ -1580,6 +1629,9 @@ async def callback_back(
     context: ContextTypes.DEFAULT_TYPE,
 ) -> None:
     query = update.callback_query
+    assert query is not None
+    assert isinstance(query.data, str)
+    assert isinstance(query.message, Message)
 
     (
         _,
@@ -1635,6 +1687,10 @@ async def callback_percentage(
     context: ContextTypes.DEFAULT_TYPE,
 ) -> None:
     query = update.callback_query
+    assert query is not None
+    assert isinstance(query.data, str)
+    assert isinstance(query.message, Message)
+
     user = query.from_user
 
     (
@@ -1711,6 +1767,9 @@ async def callback_percentage_delete(
     context: ContextTypes.DEFAULT_TYPE,
 ) -> None:
     query = update.callback_query
+    assert query is not None
+    assert isinstance(query.data, str)
+    assert isinstance(query.message, Message)
 
     (
         _,
@@ -1778,6 +1837,11 @@ async def callback_percentage_custom(
     context: ContextTypes.DEFAULT_TYPE,
 ) -> None:
     query = update.callback_query
+    assert query is not None
+    assert isinstance(query.data, str)
+    assert isinstance(query.message, Message)
+    assert context.chat_data is not None
+
     user = query.from_user
 
     (
@@ -1853,6 +1917,10 @@ async def callback_participants(
     context: ContextTypes.DEFAULT_TYPE,
 ) -> None:
     query = update.callback_query
+    assert query is not None
+    assert isinstance(query.data, str)
+    assert isinstance(query.message, Message)
+    assert context.chat_data is not None
 
     (
         _,
@@ -1905,6 +1973,10 @@ async def callback_add_known(
     context: ContextTypes.DEFAULT_TYPE,
 ) -> None:
     query = update.callback_query
+    assert query is not None
+    assert isinstance(query.data, str)
+    assert isinstance(query.message, Message)
+    assert context.chat_data is not None
 
     (
         _,
@@ -1983,6 +2055,10 @@ async def callback_add_manual(
     context: ContextTypes.DEFAULT_TYPE,
 ) -> None:
     query = update.callback_query
+    assert query is not None
+    assert isinstance(query.data, str)
+    assert isinstance(query.message, Message)
+    assert context.chat_data is not None
 
     (
         _,
@@ -2039,6 +2115,10 @@ async def callback_set_payer(
     context: ContextTypes.DEFAULT_TYPE,
 ) -> None:
     query = update.callback_query
+    assert query is not None
+    assert isinstance(query.data, str)
+    assert isinstance(query.message, Message)
+    assert context.chat_data is not None
 
     (
         _,
@@ -2115,6 +2195,10 @@ async def callback_remove_participant(
     context: ContextTypes.DEFAULT_TYPE,
 ) -> None:
     query = update.callback_query
+    assert query is not None
+    assert isinstance(query.data, str)
+    assert isinstance(query.message, Message)
+    assert context.chat_data is not None
 
     (
         _,
@@ -2212,6 +2296,9 @@ async def callback_act_as(
     context: ContextTypes.DEFAULT_TYPE,
 ) -> None:
     query = update.callback_query
+    assert query is not None
+    assert isinstance(query.data, str)
+    assert isinstance(query.message, Message)
 
     (
         _,
@@ -2276,6 +2363,9 @@ async def callback_act_self(
     context: ContextTypes.DEFAULT_TYPE,
 ) -> None:
     query = update.callback_query
+    assert query is not None
+    assert isinstance(query.data, str)
+    assert isinstance(query.message, Message)
 
     (
         _,
@@ -2328,6 +2418,12 @@ async def normal_text_message(
     context: ContextTypes.DEFAULT_TYPE,
 ) -> None:
     user = update.effective_user
+    message = update.message
+
+    assert user is not None
+    assert message is not None
+    assert message.text is not None
+    assert context.chat_data is not None
 
     remember_user(
         context,
@@ -2355,12 +2451,12 @@ async def normal_text_message(
             )
             return
 
-        value = update.message.text.strip().replace(",", ".").replace("%", "").strip()
+        value = message.text.strip().replace(",", ".").replace("%", "").strip()
 
         try:
             percent = Decimal(value)
         except InvalidOperation:
-            await update.message.reply_text("Введите число от 0 до 100.\nНапример: 35")
+            await message.reply_text("Введите число от 0 до 100.\nНапример: 35")
             return
 
         actor_id = pending_percent["actor_id"]
@@ -2379,7 +2475,7 @@ async def normal_text_message(
                 percent,
             )
         except ValueError as exc:
-            await update.message.reply_text(str(exc))
+            await message.reply_text(str(exc))
             return
 
         percentage_pending.pop(
@@ -2387,7 +2483,7 @@ async def normal_text_message(
             None,
         )
 
-        await update.message.reply_text(
+        await message.reply_text(
             f"✅ {participant_name(receipt, actor_id)}: {format_percent(percent)}%"
         )
 
@@ -2402,7 +2498,7 @@ async def normal_text_message(
             )
 
         except BadRequest:
-            await update.message.reply_text(
+            await message.reply_text(
                 receipt_text(
                     receipt,
                     page,
@@ -2439,14 +2535,14 @@ async def normal_text_message(
         )
         return
 
-    name = update.message.text.strip()
+    name = message.text.strip()
 
     if not name:
-        await update.message.reply_text("Имя не должно быть пустым.")
+        await message.reply_text("Имя не должно быть пустым.")
         return
 
     if len(name) > 64:
-        await update.message.reply_text("Имя слишком длинное. Максимум 64 символа.")
+        await message.reply_text("Имя слишком длинное. Максимум 64 символа.")
         return
 
     manual_id = next_manual_id(receipt)
@@ -2461,7 +2557,7 @@ async def normal_text_message(
         None,
     )
 
-    await update.message.reply_text(f"✅ Участник «{name}» добавлен.")
+    await message.reply_text(f"✅ Участник «{name}» добавлен.")
 
     try:
         await context.bot.edit_message_text(
@@ -2503,6 +2599,13 @@ async def remember_any_message(
 # ---------------------------------------------------------------------------
 
 
+class CalculationEntry(TypedDict):
+    name: str
+    common: int
+    personal: int
+    personal_items: list[dict[str, Any]]
+
+
 def calculate_result(
     receipt: dict,
 ) -> list[dict[str, Any]]:
@@ -2511,7 +2614,7 @@ def calculate_result(
     if not participants:
         raise ValueError("Нет участников")
 
-    result = {
+    result: dict[Any, CalculationEntry] = {
         uid: {
             "name": participant["name"],
             "common": 0,
@@ -2837,13 +2940,11 @@ async def send_final_result(
             continue
 
         transfers.append(
-            
-                "• "
-                f"{html.escape(row['name'])}"
-                " → "
-                f"{html.escape(final_payer_name)}: "
-                f"<b>{money(row['total'])} ₽</b>"
-            
+            "• "
+            f"{html.escape(row['name'])}"
+            " → "
+            f"{html.escape(final_payer_name)}: "
+            f"<b>{money(row['total'])} ₽</b>"
         )
 
     if transfers:
@@ -2872,6 +2973,7 @@ async def send_final_result(
 def clear_receipt_state(
     context: ContextTypes.DEFAULT_TYPE,
 ) -> None:
+    assert context.chat_data is not None
 
     context.chat_data.pop(
         "receipt",
@@ -2900,6 +3002,9 @@ async def callback_finish(
 ) -> None:
 
     query = update.callback_query
+    assert query is not None
+    assert isinstance(query.data, str)
+    assert isinstance(query.message, Message)
 
     _, menu_user_text = query.data.split(":")
 
@@ -2946,6 +3051,9 @@ async def callback_cancel(
 ) -> None:
 
     query = update.callback_query
+    assert query is not None
+    assert isinstance(query.data, str)
+    assert isinstance(query.message, Message)
 
     _, menu_user_text = query.data.split(":")
 
@@ -2988,13 +3096,15 @@ async def callback_noop(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ) -> None:
+    query = update.callback_query
+    assert query is not None
 
     remember_user(
         context,
-        update.callback_query.from_user,
+        query.from_user,
     )
 
-    await update.callback_query.answer()
+    await query.answer()
 
 
 # ---------------------------------------------------------------------------
