@@ -3330,7 +3330,7 @@ def main() -> None:
 
     app.add_handler(
         MessageHandler(
-            filters.TEXT & ~filters.COMMAND,
+            filters.UpdateType.MESSAGE & filters.TEXT & ~filters.COMMAND,
             normal_text_message,
         )
     )
