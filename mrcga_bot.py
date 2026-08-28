@@ -62,6 +62,7 @@ CSV_FIELDS = [
 ITEMS_PER_PAGE = 8
 
 LOGGER = logging.getLogger(__name__)
+_NETWORK_SHUTDOWN_REQUESTED = False
 
 
 # ---------------------------------------------------------------------------
@@ -3119,9 +3120,15 @@ async def handle_error(
     update: object | None,
     context: ContextTypes.DEFAULT_TYPE,
 ) -> None:
+    global _NETWORK_SHUTDOWN_REQUESTED
+
     error = context.error
 
-    if isinstance(error, NetworkError):
+    if isinstance(error, NetworkError) and not isinstance(error, BadRequest):
+        if _NETWORK_SHUTDOWN_REQUESTED:
+            return
+
+        _NETWORK_SHUTDOWN_REQUESTED = True
         LOGGER.error(
             "Telegram network error; stopping the application for restart",
             exc_info=error,
