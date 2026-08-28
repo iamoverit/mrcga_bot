@@ -12,6 +12,7 @@ from __future__ import annotations
 import csv
 import html
 import io
+import logging
 import os
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -23,7 +24,7 @@ from telegram import (
     Message,
     Update,
 )
-from telegram.error import BadRequest
+from telegram.error import BadRequest, NetworkError
 from telegram.ext import (
     Application,
     CallbackQueryHandler,
@@ -59,6 +60,8 @@ CSV_FIELDS = [
 ]
 
 ITEMS_PER_PAGE = 8
+
+LOGGER = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -3112,7 +3115,33 @@ async def callback_noop(
 # ---------------------------------------------------------------------------
 
 
+async def handle_error(
+    update: object | None,
+    context: ContextTypes.DEFAULT_TYPE,
+) -> None:
+    error = context.error
+
+    if isinstance(error, NetworkError):
+        LOGGER.error(
+            "Telegram network error; stopping the application for restart",
+            exc_info=error,
+        )
+        context.application.stop_running()
+        return
+
+    LOGGER.error(
+        "Unhandled exception while processing a Telegram update",
+        exc_info=error,
+    )
+
+
 def main() -> None:
+
+    logging.basicConfig(
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+        level=logging.INFO,
+    )
+    logging.getLogger("httpx").setLevel(logging.WARNING)
 
     builder = (
         Application.builder()
@@ -3128,6 +3157,7 @@ def main() -> None:
         builder = builder.proxy(PROXY).get_updates_proxy(PROXY)
 
     app = builder.build()
+    app.add_error_handler(handle_error)
 
     # Commands
 
