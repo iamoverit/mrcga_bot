@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import csv
 import html
 import io
@@ -24,7 +25,8 @@ from telegram import (
     Message,
     Update,
 )
-from telegram.error import BadRequest, NetworkError
+from telegram.error import BadRequest, NetworkError, TimedOut
+from telegram.request import HTTPXRequest
 from telegram.ext import (
     Application,
     CallbackQueryHandler,
@@ -3116,6 +3118,23 @@ async def callback_noop(
 # ---------------------------------------------------------------------------
 
 
+class PollingRequest(HTTPXRequest):
+    """Let the application's recovery handler see polling timeouts."""
+
+    REQUEST_DEADLINE = 60.0
+
+    async def do_request(self, *args: Any, **kwargs: Any) -> tuple[int, bytes]:
+        try:
+            # run_polling uses a 10-second long poll. Bound the entire request,
+            # including proxy setup, rather than just individual socket reads.
+            async with asyncio.timeout(self.REQUEST_DEADLINE):
+                return await super().do_request(*args, **kwargs)
+        except (TimedOut, TimeoutError) as error:
+            # PTB retries TimedOut forever without calling error handlers.
+            # A plain NetworkError reaches handle_error and permits recovery.
+            raise NetworkError("Telegram polling timed out; recovery required") from error
+
+
 async def handle_error(
     update: object | None,
     context: ContextTypes.DEFAULT_TYPE,
@@ -3153,6 +3172,7 @@ def main() -> None:
     builder = (
         Application.builder()
         .token(TOKEN)
+        .get_updates_request(PollingRequest(connection_pool_size=1, proxy=PROXY))
         .persistence(
             PicklePersistence(
                 filepath=STATE_FILE,
@@ -3161,7 +3181,7 @@ def main() -> None:
     )
 
     if PROXY:
-        builder = builder.proxy(PROXY).get_updates_proxy(PROXY)
+        builder = builder.proxy(PROXY)
 
     app = builder.build()
     app.add_error_handler(handle_error)
